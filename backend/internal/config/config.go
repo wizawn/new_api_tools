@@ -29,10 +29,12 @@ type Config struct {
 	TimeZone   string `json:"timezone"`
 
 	// Database
-	SQLDSN         string         `json:"sql_dsn"`
-	DatabaseEngine DatabaseEngine `json:"database_engine"`
-	DBMaxOpenConns int            `json:"db_max_open_conns"`
-	DBMaxIdleConns int            `json:"db_max_idle_conns"`
+	SQLDSN             string         `json:"sql_dsn"`
+	DatabaseEngine     DatabaseEngine `json:"database_engine"`
+	DBMaxOpenConns     int            `json:"db_max_open_conns"`
+	DBMaxIdleConns     int            `json:"db_max_idle_conns"`
+	AutoEnsureIndexes  bool           `json:"auto_ensure_indexes"`
+	EnforceIPRecording bool           `json:"enforce_ip_recording"`
 
 	// Log database (optional). NewAPI 的 fork 可通过 LOG_SQL_DSN 把 logs 表
 	// 分离到独立数据库；本工具需读取该库才能看到实时日志/流量。
@@ -71,6 +73,17 @@ var cfg *Config
 
 // Load reads configuration from environment variables
 func Load() *Config {
+	// 未设置时保留上游行为；非法值必须阻止启动，避免误开启数据库写入。
+	automaticWrites := map[string]bool{"AUTO_ENSURE_INDEXES": true, "ENFORCE_IP_RECORDING": true}
+	for name := range automaticWrites {
+		if value, ok := os.LookupEnv(name); ok {
+			enabled, err := strconv.ParseBool(value)
+			if err != nil {
+				panic(fmt.Sprintf("%s must be a boolean: %v", name, err))
+			}
+			automaticWrites[name] = enabled
+		}
+	}
 	cfg = &Config{
 		// Server defaults (support both SERVER_PORT/PORT and SERVER_HOST/HOST)
 		ServerPort: getEnvIntMulti([]string{"SERVER_PORT", "PORT"}, 8000),
@@ -78,9 +91,11 @@ func Load() *Config {
 		TimeZone:   getEnvStrMulti([]string{"TIMEZONE", "TZ"}, "Asia/Shanghai"),
 
 		// Database
-		SQLDSN:         getEnvStr("SQL_DSN", ""),
-		DBMaxOpenConns: getEnvInt("DB_MAX_OPEN_CONNS", 50),
-		DBMaxIdleConns: getEnvInt("DB_MAX_IDLE_CONNS", 15),
+		SQLDSN:             getEnvStr("SQL_DSN", ""),
+		DBMaxOpenConns:     getEnvInt("DB_MAX_OPEN_CONNS", 50),
+		DBMaxIdleConns:     getEnvInt("DB_MAX_IDLE_CONNS", 15),
+		AutoEnsureIndexes:  automaticWrites["AUTO_ENSURE_INDEXES"],
+		EnforceIPRecording: automaticWrites["ENFORCE_IP_RECORDING"],
 
 		// Log database (optional, see field doc). Empty → falls back to main DB.
 		LogSQLDSN: getEnvStr("LOG_SQL_DSN", ""),

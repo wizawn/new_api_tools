@@ -1,6 +1,40 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
+
+func TestAutomaticWriteConfiguration(t *testing.T) {
+	for _, value := range []string{"unset", "true", "false", "invalid", ""} {
+		t.Run(value, func(t *testing.T) {
+			for _, name := range []string{"AUTO_ENSURE_INDEXES", "ENFORCE_IP_RECORDING"} {
+				t.Setenv(name, value)
+				if value == "unset" {
+					if err := os.Unsetenv(name); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			t.Setenv("JWT_SECRET_KEY", "test-only")
+			t.Setenv("SQL_DSN", "postgresql://localhost/test")
+			if value == "invalid" || value == "" {
+				defer func() {
+					if recover() == nil {
+						t.Fatal("invalid switch must reject startup")
+					}
+				}()
+				Load()
+				return
+			}
+			loaded := Load()
+			want := value != "false"
+			if loaded.AutoEnsureIndexes != want || loaded.EnforceIPRecording != want {
+				t.Fatalf("automatic writes = (%t,%t), want %t", loaded.AutoEnsureIndexes, loaded.EnforceIPRecording, want)
+			}
+		})
+	}
+}
 
 func TestDetectLogEngine(t *testing.T) {
 	tests := []struct {

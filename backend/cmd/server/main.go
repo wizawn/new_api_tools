@@ -39,16 +39,20 @@ func main() {
 	defer database.Close()
 
 	// Ensure indexes (background, with delay to reduce load)
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.L.Error(fmt.Sprintf("索引创建 goroutine panic: %v", r))
-			}
+	if cfg.AutoEnsureIndexes {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.L.Error(fmt.Sprintf("索引创建 goroutine panic: %v", r))
+				}
+			}()
+			time.Sleep(2 * time.Second)
+			db := database.Get()
+			db.EnsureIndexes(true, 500*time.Millisecond)
 		}()
-		time.Sleep(2 * time.Second)
-		db := database.Get()
-		db.EnsureIndexes(true, 500*time.Millisecond)
-	}()
+	} else {
+		logger.L.System("自动创建数据库索引已禁用")
+	}
 
 	// ========== 4. Initialize Redis cache ==========
 	if cfg.RedisConnString != "" {
@@ -125,7 +129,11 @@ func main() {
 
 	// IP recording enforcement: check every 10 minutes, enable if any user disabled it
 	stopIPEnforce := make(chan struct{})
-	go backgroundEnforceIPRecording(stopIPEnforce)
+	if cfg.EnforceIPRecording {
+		go backgroundEnforceIPRecording(stopIPEnforce)
+	} else {
+		logger.L.System("自动强制开启用户 IP 记录已禁用")
+	}
 
 	stopAbuseBroadcast := make(chan struct{})
 	go backgroundSyncAbuseBroadcast(stopAbuseBroadcast)
